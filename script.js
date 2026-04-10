@@ -1,6 +1,6 @@
 // --- SUPABASE DATABASE CONNECTION ---
-const supabaseUrl = 'PASTE_YOUR_SUPABASE_URL_HERE';
-const supabaseKey = 'PASTE_YOUR_SUPABASE_ANON_KEY_HERE';
+const supabaseUrl = 'https://fkpjtjsaoqimhdkudcpj.supabase.co';
+const supabaseKey = 'sb_publishable_a-G7SNvFqJIgkUTW0Ux1nA_R7yu0rIW';
 const supabaseClient = supabase.createClient(supabaseUrl, supabaseKey);
 
 // --- 1. MOCK MENU DATA (EXACTLY 40 Items, 6 Restaurants) ---
