@@ -1,4 +1,9 @@
-// --- 1. MOCK DATA (EXACTLY 40 Items, 6 Restaurants, High-Quality Images) ---
+// --- SUPABASE DATABASE CONNECTION ---
+const supabaseUrl = 'PASTE_YOUR_SUPABASE_URL_HERE';
+const supabaseKey = 'PASTE_YOUR_SUPABASE_ANON_KEY_HERE';
+const supabaseClient = supabase.createClient(supabaseUrl, supabaseKey);
+
+// --- 1. MOCK MENU DATA (EXACTLY 40 Items, 6 Restaurants) ---
 const rawMenuData = [
     // Truffles
     { id: 1, res: "Truffles", dist: 2, name: "Cheese Burger", price: 220, measure: "1 pc", img: "https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=400&q=80" },
@@ -56,11 +61,11 @@ const rawMenuData = [
 let currentMenu = [...rawMenuData];
 let isLocationDetected = false;
 
+// Cart remains in local storage temporarily until checkout
 let cart = JSON.parse(localStorage.getItem('cart')) || [];
 cart = cart.filter(item => item.price && item.quantity > 0 && !isNaN(item.price)); 
 if (cart.length === 0) localStorage.removeItem('cart');
 
-let orders = JSON.parse(localStorage.getItem('orders')) || [];
 let userDetails = JSON.parse(localStorage.getItem('userDetails')) || { name: "", address: "" };
 
 // --- 2. INITIALIZATION ---
@@ -84,7 +89,7 @@ function showToast(msg, isError = false) {
     setTimeout(() => t.className = 'toast hidden', 3000);
 }
 
-// 100% Reliable Direct Images for Marquee (Transparent Backgrounds)
+// Transparent Backgrounds Logos
 function injectBrandLogos() {
     const reliableLogos = [
         "https://cdn.worldvectorlogo.com/logos/kfc-2.svg",
@@ -116,12 +121,10 @@ function requestLocation() {
                 localStorage.setItem('userDetails', JSON.stringify(userDetails));
                 updateUserUI();
                 
-                // Show Location right beside the button
                 const locSpan = document.getElementById('detected-location-span');
                 locSpan.style.display = 'inline-block';
                 locSpan.innerText = "📍 Detected: Indiranagar, Bengaluru";
                 
-                // Shuffle Array & Enable <5km Proximity Filter
                 isLocationDetected = true;
                 currentMenu = [...rawMenuData].sort(() => Math.random() - 0.5);
                 document.getElementById('proximity-badge').classList.remove('hidden');
@@ -198,7 +201,6 @@ function renderMenu() {
 
 function updateQty(id, delta) {
     let itemIndex = cart.findIndex(c => c.id === id);
-    
     if (itemIndex === -1 && delta > 0) {
         let baseItem = rawMenuData.find(m => m.id === id);
         cart.push({...baseItem, quantity: 1});
@@ -208,7 +210,6 @@ function updateQty(id, delta) {
             cart.splice(itemIndex, 1);
         }
     }
-    
     localStorage.setItem('cart', JSON.stringify(cart));
     updateCartUI();
     renderMenu(); 
@@ -276,43 +277,96 @@ function simulateScan() {
     setTimeout(() => { status.innerText = "✅ Payment Successful!"; status.style.color = "#10b981"; isPaid = true; }, 1500);
 }
 
-function placeOrder() {
+// --- 7. LIVE DATABASE INSERTS (SUPABASE API) ---
+async function placeOrder() {
     if (cart.length === 0) return showToast("Cart is empty!", true);
     if (!userDetails.name || !userDetails.address) { showToast("Please provide delivery details!", true); return openAddressModal(); }
     const method = document.getElementById('payment-method').value;
     if (method === 'upi' && !isPaid) return showToast("Please click QR to simulate payment.", true);
 
+    const btn = document.getElementById('place-order-btn');
+    btn.innerText = "Writing to Database...";
+    btn.disabled = true;
+
     const grandTotal = parseInt(document.getElementById('cart-total').innerText);
+    const generatedOrderId = "CB" + Date.now().toString().slice(-6);
 
-    const newOrder = {
-        orderId: "CB" + Date.now().toString().slice(-6),
-        customer: userDetails.name,
-        address: userDetails.address,
-        items: cart,
-        totalAmountPaid: grandTotal,
-        method: method.toUpperCase()
-    };
+    try {
+        // Step 1: Insert User into DB (Columns forced lowercase to match Postgres defaults)
+        const { data: userData, error: userError } = await supabaseClient
+            .from('users')
+            .insert([{ fullname: userDetails.name, address: userDetails.address }])
+            .select();
+        if (userError) throw userError;
+        
+        const currentUserId = userData[0].userid;
 
-    orders.push(newOrder);
-    localStorage.setItem('orders', JSON.stringify(orders));
-    cart = []; localStorage.removeItem('cart');
-    updateCartUI(); renderMenu(); togglePaymentUI();
-    
-    document.getElementById('success-name').innerText = userDetails.name;
-    document.getElementById('success-modal').classList.remove('hidden');
-    setTimeout(() => { document.getElementById('success-modal').classList.add('hidden'); navigate('home'); }, 4000);
+        // Step 2: Insert Order into DB
+        const { error: orderError } = await supabaseClient
+            .from('orders')
+            .insert([{
+                orderid: generatedOrderId,
+                userid: currentUserId,
+                totalamount: grandTotal,
+                paymentmethod: method.toUpperCase(),
+                paymentstatus: method === 'upi' ? 'PAID' : 'PENDING'
+            }]);
+        if (orderError) throw orderError;
+
+        // Step 3: Insert Cart Items into OrderDetails DB
+        const orderDetailsArray = cart.map(item => ({
+            orderid: generatedOrderId,
+            itemid: item.id,
+            quantity: item.quantity
+        }));
+        
+        const { error: detailsError } = await supabaseClient
+            .from('orderdetails')
+            .insert(orderDetailsArray);
+        if (detailsError) throw detailsError;
+
+        // Clean up UI on Success
+        cart = []; localStorage.removeItem('cart');
+        updateCartUI(); renderMenu(); togglePaymentUI();
+        
+        document.getElementById('success-name').innerText = userDetails.name;
+        document.getElementById('success-modal').classList.remove('hidden');
+        setTimeout(() => { document.getElementById('success-modal').classList.add('hidden'); navigate('home'); }, 4000);
+
+    } catch (dbError) {
+        console.error("Supabase Error:", dbError);
+        showToast("Database connection failed. Check console.", true);
+    } finally {
+        btn.innerText = "Confirm Order";
+        btn.disabled = false;
+    }
 }
 
-// --- 7. DBMS SIMULATION VIEWER ---
-function updateDatabaseView() {
+// --- 8. LIVE DATABASE VIEWER ---
+async function updateDatabaseView() {
     document.getElementById('db-user-output').innerText = userDetails.name ? JSON.stringify(userDetails, null, 4) : "No user data.";
-    document.getElementById('db-orders-output').innerText = orders.length ? JSON.stringify(orders, null, 4) : "No orders.";
     document.getElementById('db-cart-output').innerText = cart.length ? JSON.stringify(cart, null, 4) : "No active session.";
+
+    // Fetch live orders directly from Supabase to prove backend connectivity
+    document.getElementById('db-orders-output').innerText = "Fetching live from Supabase...";
+    
+    try {
+        const { data: dbOrders, error } = await supabaseClient.from('orders').select('*');
+        if (error) throw error;
+        
+        if (dbOrders && dbOrders.length > 0) {
+            document.getElementById('db-orders-output').innerText = JSON.stringify(dbOrders, null, 4);
+        } else {
+            document.getElementById('db-orders-output').innerText = "Database connected. No orders placed yet.";
+        }
+    } catch (err) {
+        document.getElementById('db-orders-output').innerText = "Error fetching live database: Check console or API Keys.";
+    }
 }
 
 function clearDatabase() {
-    localStorage.clear(); cart = []; orders = []; userDetails = {name: "", address: ""};
+    localStorage.clear(); cart = []; userDetails = {name: "", address: ""};
     document.getElementById('detected-location-span').style.display = 'none';
     isLocationDetected = false; currentMenu = [...rawMenuData];
-    updateCartUI(); updateUserUI(); renderMenu(); showToast("Database Cleared", true);
+    updateCartUI(); updateUserUI(); renderMenu(); showToast("Local Session Cleared", true);
 }
