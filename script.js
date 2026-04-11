@@ -1,5 +1,24 @@
+function loadMenuFromDB() {
+    fetch("https://cravebites-backend-0cd5.onrender.com/menu")
+        .then(res => res.json())
+        .then(data => {
+            currentMenu = data.map(item => ({
+                id: item.item_id,
+                res: item.restaurant,
+                name: item.name,
+                price: item.price,
+                measure: item.measure,
+                img: item.image,
+                dist: 3
+            }));
+
+            renderMenu();
+        })
+        .catch(err => console.error("Error fetching menu:", err));
+}
+
 // --- 1. MOCK DATA (EXACTLY 40 Items, 6 Restaurants, High-Quality Images) ---
-const rawMenuData = [
+/*const rawMenuData = [
     // Truffles
     { id: 1, res: "Truffles", dist: 2, name: "Cheese Burger", price: 220, measure: "1 pc", img: "https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=400&q=80" },
     { id: 2, res: "Truffles", dist: 2, name: "Peri Fries", price: 150, measure: "200g", img: "https://cdn.uengage.io/uploads/64261/image-591513-1754044989.jpeg" },
@@ -51,9 +70,9 @@ const rawMenuData = [
     { id: 38, res: "Subway", dist: 6, name: "Oatmeal Cookie", price: 50, measure: "1 pc", img: "https://images.unsplash.com/photo-1499636136210-6f4ee915583e?w=400&q=80" },
     { id: 39, res: "Subway", dist: 6, name: "Diet Coke", price: 60, measure: "300ml", img: "https://images.unsplash.com/photo-1622483767028-3f66f32aef97?w=400&q=80" },
     { id: 40, res: "Subway", dist: 6, name: "Aloo Patty Sub", price: 160, measure: "6 inch", img: "https://t3.ftcdn.net/jpg/07/58/35/20/360_F_758352039_Xd31bsIdDaVXoyZjBe8EoKD9FdxxvLeb.jpg" }
-];
+];*/
 
-let currentMenu = [...rawMenuData];
+let currentMenu = [];
 let isLocationDetected = false;
 
 let cart = JSON.parse(localStorage.getItem('cart')) || [];
@@ -67,6 +86,7 @@ let userDetails = JSON.parse(localStorage.getItem('userDetails')) || { name: "",
 window.onload = () => { 
     injectBrandLogos();
     renderMenu(); 
+    loadMenuFromDB();
     updateCartUI(); 
     updateUserUI();
     updateDatabaseView(); 
@@ -196,22 +216,33 @@ function renderMenu() {
     });
 }
 
-function updateQty(id, delta) {
-    let itemIndex = cart.findIndex(c => c.id === id);
-    
-    if (itemIndex === -1 && delta > 0) {
-        let baseItem = rawMenuData.find(m => m.id === id);
-        cart.push({...baseItem, quantity: 1});
-    } else if (itemIndex !== -1) {
-        cart[itemIndex].quantity += delta;
-        if (cart[itemIndex].quantity <= 0) {
-            cart.splice(itemIndex, 1);
+function updateQty(itemId, change) {
+    const item = currentMenu.find(i => i.id === itemId);
+
+    if (!item) {
+        console.error("Item not found:", itemId);
+        return;
+    }
+
+    let cartItem = cart.find(c => c.id === itemId);
+
+    if (cartItem) {
+        cartItem.quantity += change;
+
+        if (cartItem.quantity <= 0) {
+            cart = cart.filter(c => c.id !== itemId);
+        }
+    } else {
+        if (change > 0) {
+            cart.push({
+                ...item,
+                quantity: 1
+            });
         }
     }
-    
-    localStorage.setItem('cart', JSON.stringify(cart));
+
     updateCartUI();
-    renderMenu(); 
+    renderMenu();
 }
 
 // --- 6. CART & CHECKOUT UI ---
@@ -278,9 +309,17 @@ function simulateScan() {
 
 function placeOrder() {
     if (cart.length === 0) return showToast("Cart is empty!", true);
-    if (!userDetails.name || !userDetails.address) { showToast("Please provide delivery details!", true); return openAddressModal(); }
+
+    if (!userDetails.name || !userDetails.address) {
+        showToast("Please provide delivery details!", true);
+        return openAddressModal();
+    }
+
     const method = document.getElementById('payment-method').value;
-    if (method === 'upi' && !isPaid) return showToast("Please click QR to simulate payment.", true);
+
+    if (method === 'upi' && !isPaid) {
+        return showToast("Please click QR to simulate payment.", true);
+    }
 
     const grandTotal = parseInt(document.getElementById('cart-total').innerText);
 
@@ -293,14 +332,43 @@ function placeOrder() {
         method: method.toUpperCase()
     };
 
+    // ✅ SEND TO BACKEND (MYSQL)
+    fetch("https://your-backend.onrender.com/order", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+            name: userDetails.name,
+            address: userDetails.address,
+            total: grandTotal,
+            payment: method
+        })
+    })
+    .then(res => res.json())
+    .then(data => {
+        console.log("Saved to DB:", data);
+    })
+    .catch(err => console.error("DB Error:", err));
+
+    // (KEEP YOUR EXISTING LOGIC ALSO)
     orders.push(newOrder);
     localStorage.setItem('orders', JSON.stringify(orders));
-    cart = []; localStorage.removeItem('cart');
-    updateCartUI(); renderMenu(); togglePaymentUI();
-    
+
+    cart = [];
+    localStorage.removeItem('cart');
+
+    updateCartUI();
+    renderMenu();
+    togglePaymentUI();
+
     document.getElementById('success-name').innerText = userDetails.name;
     document.getElementById('success-modal').classList.remove('hidden');
-    setTimeout(() => { document.getElementById('success-modal').classList.add('hidden'); navigate('home'); }, 4000);
+
+    setTimeout(() => {
+        document.getElementById('success-modal').classList.add('hidden');
+        navigate('home');
+    }, 4000);
 }
 
 // --- 7. DBMS SIMULATION VIEWER ---
