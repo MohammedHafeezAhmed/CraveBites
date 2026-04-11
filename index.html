@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CraveBites | Premium Delivery</title>
+    <style>@import url('https://fonts.googleapis.com/css2?family=Pacifico&display=swap');</style>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="toast" class="toast hidden"></div>
+
+    <div id="address-modal" class="modal-overlay hidden">
+        <div class="modal-box">
+            <h3>Delivery Details</h3>
+            <input type="text" id="user-name" placeholder="Your Full Name">
+            <textarea id="user-address" rows="3" placeholder="Enter your full delivery address..."></textarea>
+            <div class="modal-buttons">
+                <button class="danger-btn" onclick="closeAddressModal()">Cancel</button>
+                <button class="primary-btn" onclick="saveAddress()">Save Address</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="success-modal" class="modal-overlay hidden">
+        <div class="modal-box success-box">
+            <div class="success-icon">🎉</div>
+            <h2>Order Confirmed!</h2>
+            <p><strong id="success-name">User</strong>, your delicious food is being prepared and will be delivered soon.</p>
+        </div>
+    </div>
+
+    <nav class="cool-nav">
+        <div class="logo stylish-logo">CraveBites</div>
+        <div class="nav-links">
+            <button onclick="navigate('home')">Home</button>
+            <button onclick="navigate('menu')">Menu</button>
+            <button onclick="navigate('cart')">Cart (<span id="cart-count">0</span>)</button>
+            <button class="address-btn" onclick="openAddressModal()">📍 <span id="nav-address-text">Add Address</span></button>
+            <button onclick="navigate('database')" class="db-btn">View DBMS</button>
+        </div>
+    </nav>
+
+    <main>
+        <section id="home" class="page active dynamic-bg slant-bottom">
+            <div class="hero glass-panel">
+                <h1>Craving something extraordinary ?</h1>
+                <p>Discover top brands. Click below to filter by < 5km proximity.</p>
+                <br>
+                <div class="search-bar-mock" style="display: flex; align-items: center; justify-content: center; gap: 1rem; flex-wrap: wrap;">
+                    <button class="primary-btn" onclick="requestLocation()">📍 Detect My Location</button>
+                    <span id="detected-location-span" style="font-weight: bold; color: var(--purple); background: #f3f0ff; padding: 0.5rem 1rem; border-radius: 8px; display: none;"></span>
+                </div>
+            </div>
+
+            <div class="features">
+                <div class="feature-card glass-card">🚀 Lightning Fast Delivery</div>
+                <div class="feature-card glass-card">🛡️ Secure UPI Payments</div>
+                <div class="feature-card glass-card">🍔 Top Rated Restaurants</div>
+            </div>
+
+            <div class="how-it-works glass-panel">
+                <h3>How It Works</h3>
+                <div class="steps-grid">
+                    <div class="step"><h4>1. Choose</h4><p>Browse 40 premium items.</p></div>
+                    <div class="step"><h4>2. Pay</h4><p>Quick and secure checkout.</p></div>
+                    <div class="step"><h4>3. Enjoy</h4><p>Hot food delivered fast.</p></div>
+                </div>
+            </div>
+            
+            <div class="partner-brands overflow-hidden">
+                <h3 style="text-align: center; color: white; margin-bottom: 0.5rem; text-shadow: 1px 1px 3px rgba(0,0,0,0.3);">Our Global Partners</h3>
+                <p style="text-align: center; color: white; margin-bottom: 2rem;">We deliver from the most loved brands.</p>
+                <div class="marquee-container">
+                    <div class="marquee-content" id="brand-logos-container">
+                        </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="menu" class="page">
+            <div class="restaurant-filter">
+                <label><strong>Filter by Restaurant:</strong></label>
+                <select id="restaurant-select" onchange="renderMenu()">
+                    <option value="all">All Restaurants</option>
+                    <option value="Truffles">Truffles</option>
+                    <option value="Meghana">Meghana Foods</option>
+                    <option value="Leon">Leon Grill</option>
+                    <option value="Dominos">Domino's Pizza</option>
+                    <option value="KFC">KFC</option>
+                    <option value="Subway">Subway</option>
+                </select>
+                <span id="proximity-badge" class="hidden" style="margin-left:10px; color: green; font-weight: bold;">✅ Showing nearby (< 5km)</span>
+            </div>
+            <div class="menu-list" id="menu-container"></div>
+        </section>
+
+        <section id="cart" class="page">
+            <h2>Checkout</h2>
+            <div class="cart-container">
+                <div class="cart-left">
+                    <div class="customer-details-box">
+                        <h3>Customer Details</h3>
+                        <p><strong>Name:</strong> <span id="checkout-name">Not provided</span></p>
+                        <p><strong>Deliver To:</strong> <span id="checkout-address">Not provided</span></p>
+                        <button class="text-btn" onclick="openAddressModal()">Change Details</button>
+                    </div>
+                    <div class="cart-items-box" id="cart-items"></div>
+                </div>
+                
+                <div class="checkout-box">
+                    <h3>Bill Details</h3>
+                    <div class="bill-row"><p>Item Total</p><p>₹<span id="bill-subtotal">0</span></p></div>
+                    <div class="bill-row"><p>Delivery Fee</p><p>₹<span id="bill-delivery">0</span></p></div>
+                    <div class="bill-row"><p>GST (5%)</p><p>₹<span id="bill-gst">0</span></p></div>
+                    <hr style="margin: 1rem 0; border: 0; border-top: 1px dashed #ccc;">
+                    <h3 class="total bill-row"><strong>Grand Total</strong><strong>₹<span id="cart-total">0</span></strong></h3>
+                    
+                    <label style="margin-top: 1rem; display:block;">Payment Method</label>
+                    <select id="payment-method" onchange="togglePaymentUI()">
+                        <option value="cash">Cash on Delivery</option>
+                        <option value="upi">UPI (GPay / PhonePe)</option>
+                    </select>
+
+                    <div id="upi-section" class="hidden">
+                        <p class="small-text">Scan to simulate payment</p>
+                        <div class="qr-container" onclick="simulateScan()">
+                            <img src="" alt="UPI QR Code" id="qr-image">
+                        </div>
+                        <p id="payment-status">Awaiting Scan...</p>
+                    </div>
+                    <button id="place-order-btn" class="primary-btn full-width" onclick="placeOrder()">Confirm Order</button>
+                </div>
+            </div>
+        </section>
+
+        <section id="database" class="page">
+            <h2>DBMS Simulation Data</h2>
+            <div class="db-viewer">
+                <h3>Table: Users</h3>
+                <pre id="db-user-output">No user data...</pre>
+                <h3>Table: Orders</h3>
+                <pre id="db-orders-output">No orders yet...</pre>
+                <h3>Table: Session (Cart)</h3>
+                <pre id="db-cart-output">Cart is empty...</pre>
+            </div>
+            <button onclick="clearDatabase()" class="danger-btn">Clear Database</button>
+        </section>
+    </main>
+
+    <footer class="slant-top">
+        <div class="footer-content">
+            <div class="footer-brand">
+                <h2 class="stylish-logo">CraveBites</h2>
+                <p>Delivering happiness, one meal at a time.</p>
+                <div class="social-icons">🌐 Facebook | 📸 Instagram | 🐦 Twitter</div>
+            </div>
+            <div class="footer-links">
+                <h4>Quick Links</h4>
+                <p>About Us</p>
+                <p>Careers</p>
+                <p>Terms of Service</p>
+                <p>Privacy Policy</p>
+            </div>
+            <div class="footer-links">
+                <h4>Contact Us</h4>
+                <p>📧 support@cravebites.com</p>
+                <p>📞 +91 98765 43210</p>
+                <p>📍 Bengaluru, Karnataka</p>
+            </div>
+        </div>
+        <div class="footer-bottom">
+            <p>&copy; 2026 CraveBites Delivery DBMS Project. All rights reserved.</p>
+        </div>
+    </footer>
+
+    <script src="script.js"></script>
+</body>
+</html>
